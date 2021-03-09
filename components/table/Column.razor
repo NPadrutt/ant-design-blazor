@@ -1,15 +1,28 @@
-@namespace AntDesign
+锘緻namespace AntDesign
 @inherits ColumnBase
 @using AntDesign.Core.Helpers
 @using AntDesign.TableModels
 @typeparam TData
 
-@if (IsPlaceholder)
+@if (IsInitialize)
+{
+    return;
+}
+else if (IsPlaceholder)
 {
     <td style="padding: 0px; border: 0px; height: 0px;"></td>
 }
+else if (IsMeasure)
+{
+    <td style="padding: 0px; border: 0px; height: 0px;"><div style="height: 0px; overflow: hidden;">&nbsp;</div></td>
+}
 else if (IsColGroup)
 {
+    @if (AppendExpandColumn)
+    {
+        <col class="ant-table-expand-icon-col">
+    }
+
     if (Width != null)
     {
         <col style="width: @((CssSizeLength)Width); min-width: @((CssSizeLength)Width);">
@@ -21,17 +34,22 @@ else if (IsColGroup)
 }
 else if (IsHeader && HeaderColSpan != 0)
 {
-    <th class="@ClassMapper.Class" style=" @Style" @onclick="HandelHeaderClick" colspan="@HeaderColSpan">
-        @if (Sortable)
+
+    @if (AppendExpandColumn)
+    {
+        <th class="ant-table-cell ant-table-row-expand-icon-cell"></th>
+    }
+
+    var headerCellAttributes = OnHeaderCell?.Invoke();
+
+    <th class="@ClassMapper.Class" style="@FixedStyle @HeaderStyle" colspan="@HeaderColSpan" title="@(Ellipsis?HeaderTitle:"")" @attributes="headerCellAttributes">
+        @if (Sortable || Filters?.Any() == true)
         {
-            if (ShowSorterTooltip)
-            {
-                @ToolTipSorter(this)
-            }
-            else
-            {
-                @SortHeader(this)
-            }
+            @FilterToolTipSorter(this)
+        }
+        else if (TitleTemplate != null)
+        {
+            @TitleTemplate
         }
         else
         {
@@ -39,22 +57,39 @@ else if (IsHeader && HeaderColSpan != 0)
         }
     </th>
 }
-else if (!IsHeader && RowSpan != 0 && ColSpan != 0)
+else if (IsBody && RowSpan != 0 && ColSpan != 0)
 {
-    <td class="@ClassMapper.Class" style=" @Style" rowspan="@RowSpan" colspan="@ColSpan">
-        @if (ColIndex == 1 && Table.TreeMode)
-        {
-            <span class="ant-table-row-indent indent-level-@RowData.Level" style="padding-left: @(RowData.Level* Table.IndentSize)px;"></span>
-            @if (RowData.HasChildren)
+
+    var fieldText = !string.IsNullOrWhiteSpace(Format) ? Formatter<TData>.Format(Field, Format) : Field?.ToString();
+
+    @if (AppendExpandColumn)
+    {
+        <td class="ant-table-cell ant-table-row-expand-icon-cell">
+            @if (Table.RowExpandable(RowData) && (!Table.TreeMode || !RowData.HasChildren))
             {
                 <button type="button" @onclick="ToggleTreeNode"
-                        class="ant-table-row-expand-icon @(RowData?.Expanded==true?"ant-table-row-expand-icon-expanded":"ant-table-row-expand-icon-collapsed")" aria-label="关闭行"></button>
+                        class="ant-table-row-expand-icon @(RowData.Expanded?"ant-table-row-expand-icon-expanded":"ant-table-row-expand-icon-collapsed")"
+                        aria-label="@(RowData.Expanded?Table.Locale.Collapse:Table.Locale.Expand)"></button>
+            }
+        </td>
+    }
+
+    var cellAttributes = OnCell?.Invoke(RowData);
+
+    <td class="@ClassMapper.Class" style="@FixedStyle @Style" rowspan="@RowSpan" colspan="@ColSpan" title="@(Ellipsis? fieldText:"")" @attributes="cellAttributes">
+        @if (ColIndex == Table.TreeExpandIconColumnIndex && Table.TreeMode)
+        {
+            <span class="ant-table-row-indent indent-level-@RowData.Level" style="padding-left: @((CssSizeLength)(RowData.Level * Table.IndentSize));"></span>
+            @if (RowData.HasChildren)
+            {
+                <button type="button" @onclick="ToggleTreeNode" class="ant-table-row-expand-icon @(RowData?.Expanded==true?"ant-table-row-expand-icon-expanded":"ant-table-row-expand-icon-collapsed")" aria-label="@(RowData?.Expanded==true?Table.Locale.Collapse:Table.Locale.Expand)"></button>
             }
             else
             {
-                <button type="button" class="ant-table-row-expand-icon ant-table-row-expand-icon-spaced" aria-label="关闭行"></button>
+                <button type="button" class="ant-table-row-expand-icon ant-table-row-expand-icon-spaced" aria-label="@Table.Locale.Expand"></button>
             }
         }
+
         @if (CellRender != null)
         {
             @CellRender(Field)
@@ -67,11 +102,11 @@ else if (!IsHeader && RowSpan != 0 && ColSpan != 0)
         {
             if (!string.IsNullOrWhiteSpace(Format))
             {
-                @(Formatter<TData>.Format(Field,Format))
+                @(Formatter<TData>.Format(GetValue != null ? GetValue(RowData) : Field, Format))
             }
             else
             {
-                @Field
+                @(GetValue != null ? GetValue(RowData) : Field)
             }
         }
     </td>
@@ -80,22 +115,116 @@ else if (!IsHeader && RowSpan != 0 && ColSpan != 0)
 @code
 {
 
-    string HeaderTitle => Title ?? DisplayName ?? FieldName;
+    string HeaderTitle => Title ?? DisplayName ?? FieldName ?? DataIndex;
 
     readonly RenderFragment<Column<TData>> SortHeader = col =>
     @<div class="ant-table-column-sorters">
-        <span>@col.HeaderTitle</span>
-        <span class="ant-table-column-sorter ant-table-column-sorter-full">
+        <span>
+            @if (col.TitleTemplate != null)@col.TitleTemplate else @col.HeaderTitle
+        </span>
+        @{
+            bool hasDescendingSorter = SortDirection.Descending.IsIn(col.SortDirections);
+            bool hasAscendingSorter = SortDirection.Ascending.IsIn(col.SortDirections);
+        }
+        <span class="ant-table-column-sorter @(hasDescendingSorter && hasAscendingSorter?"ant-table-column-sorter-full":"")">
             <span class="ant-table-column-sorter-inner">
-                <Icon Type="caret-up" Class=@($"ant-table-column-sorter-up {(col.SortModel.SortType==SortType.Ascending? "active":"")}") />
-                <Icon Type="caret-down" Class=@($"ant-table-column-sorter-down {(col.SortModel.SortType==SortType.Descending? "active":"")}") />
+                @if (hasAscendingSorter)
+                {
+                    <Icon Type="caret-up" Class=@($"ant-table-column-sorter-up {(col._sortDirection == SortDirection.Ascending? "active":"")}") />
+                }
+                @if (hasDescendingSorter)
+                {
+                    <Icon Type="caret-down" Class=@($"ant-table-column-sorter-down {(col._sortDirection == SortDirection.Descending ? "active" : "")}") />
+                }
             </span>
         </span>
     </div>;
 
 readonly RenderFragment<Column<TData>> ToolTipSorter = col =>
-@<Tooltip Class="ant-table-column-sorters-with-tooltip" Title="@col.SorterTooltip">
-    @col.SortHeader(col)
-</Tooltip>;
+@<Template>
+    @if (col.ShowSorterTooltip)
+    {
+        <Tooltip Title="@col.SorterTooltip">
+            <Unbound>
+                <div class="ant-table-column-sorters-with-tooltip" @ref="context.Current">
+                    @col.SortHeader(col)
+                </div>
+            </Unbound>
+        </Tooltip>
+    }
+    else
+    {
+        @col.SortHeader(col)
+    }
+</Template>;
+
+readonly RenderFragment<Column<TData>> FilterToolTipSorter = col =>
+@<Template>
+    @if (col.Filters?.Any() == true)
+    {
+        <div class="ant-table-filter-column">
+            <span class="ant-table-filter-column-title" @attributes="@(new Dictionary<string, object>() { ["onclick"]=_callbackFactory.Create(col, col.HandleSort )})">
+                @if (col.Sortable)
+                {
+                    @col.ToolTipSorter(col)
+                }
+            </span>
+            <Dropdown Trigger="new[] { TriggerType.Click }" Visible="col._filterOpened" Placement="PlacementType.BottomRight" TriggerReference="col._filterTriggerRef">
+                <Unbound>
+                    <span @ref="@col._filterTriggerRef" class="ant-table-filter-trigger-container @(col._filterOpened?" ant-table-filter-trigger-container-open":"")">
+                        <span role="button" tabindex="-1" class="ant-dropdown-trigger ant-table-filter-trigger @(col._hasFilterSelected?"active":"")"
+                              @attributes="@(new Dictionary<string, object>() { ["onclick"] = _callbackFactory.Create<MouseEventArgs>(col, () => col._filterOpened = !col._filterOpened )})">
+                            <Icon Type="filter" Theme="fill" />
+                        </span>
+                    </span>
+                </Unbound>
+                <Overlay>
+                    <div class="ant-table-filter-dropdown">
+                        <Menu AutoCloseDropdown="false" SelectedKeys="col._selectedFilterValues">
+                            @foreach (var filter in col.Filters)
+                            {
+                                <MenuItem Key="@filter.Value.ToString()" @attributes="@(new Dictionary<string, object>() { ["OnClick"] = _callbackFactory.Create<MouseEventArgs>(col, () => col.FilterSelected(filter))})">
+                                    @if (col.FilterMultiple)
+                                    {
+                                        <Checkbox Value="filter.Selected" @attributes="@(new Dictionary<string, object>() { ["ValueChanged"] = _callbackFactory.Create<bool>(col, value => col.FilterSelected(filter)) })">@filter.Text</Checkbox>
+                                    }
+                                    else
+                                    {
+                                        <Radio TValue="bool" Checked="filter.Selected" @attributes="@(new Dictionary<string, object>() { ["CheckedChanged"] = _callbackFactory.Create<bool>(col, value => col.FilterSelected(filter))})">@filter.Text</Radio>
+                                    }
+                                </MenuItem>
+                            }
+                        </Menu>
+                        <div class="ant-table-filter-dropdown-btns">
+                            <Button Size="small" Type="link" @attributes="@(new Dictionary<string, object>() { ["OnClick"] = _callbackFactory.Create<MouseEventArgs>(col, ()=> col.FilterReset()) })">
+                                @col.Table?.Locale.FilterReset
+                            </Button>
+                            <Button Size="small" Type="primary" @attributes="@(new Dictionary<string, object>() { ["OnClick"] = _callbackFactory.Create<MouseEventArgs>(col, ()=> col.FilterConfirm()) })">
+                                @col.Table?.Locale.FilterConfirm
+                            </Button>
+                        </div>
+                    </div>
+                </Overlay>
+            </Dropdown>
+        </div>
+    }
+    else
+    {
+        @if (col.Sortable)
+        {
+             <div @attributes="@(new Dictionary<string, object>() { ["onclick"]=_callbackFactory.Create(col, col.HandleSort )})">
+                 @col.ToolTipSorter(col)
+             </div>
+        }
+        else if (col.TitleTemplate != null)
+        {
+            @col.TitleTemplate
+        }
+        else
+        {
+            @col.HeaderTitle
+        }
+    }
+</Template>;
 
 }

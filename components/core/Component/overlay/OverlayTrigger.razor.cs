@@ -56,6 +56,15 @@ namespace AntDesign.Internal
         [Parameter]
         public bool Visible { get; set; } = false;
 
+        public void SetVisible(bool visible) => Visible = visible;
+
+        /// <summary>
+        /// 自动关闭功能和Visible参数同时生效
+        /// Both auto-off and Visible control close
+        /// </summary>
+        [Parameter]
+        public bool ComplexAutoCloseAndVisible { get; set; } = false;
+
         [Parameter]
         public bool IsButton { get; set; } = false;
 
@@ -68,8 +77,31 @@ namespace AntDesign.Internal
         [Parameter]
         public TriggerType[] Trigger { get; set; } = new TriggerType[] { TriggerType.Hover };
 
+        /*
+         * 通过参数赋值的placement，不应该通过其它方式赋值
+         * Placement set by Parameter, should not be change by other way
+         */
+        private PlacementType _paramPlacement = PlacementType.BottomLeft;
+
+        /*
+         * 当前的placement，某些情况下可能会被Overlay组件修改（通过ChangePlacementForShow函数）
+         * Current placement, would change by overlay in some cases(via ChangePlacementForShow function)
+         */
+        private PlacementType _placement = PlacementType.BottomLeft;
+
         [Parameter]
-        public PlacementType Placement { get; set; } = PlacementType.BottomLeft;
+        public PlacementType Placement
+        {
+            get
+            {
+                return _placement;
+            }
+            set
+            {
+                _placement = value;
+                _paramPlacement = value;
+            }
+        }
 
         [Parameter] public Action OnMouseEnter { get; set; }
 
@@ -88,7 +120,24 @@ namespace AntDesign.Internal
         public RenderFragment ChildContent { get; set; }
 
         [Parameter]
+        public RenderFragment<ForwardRef> Unbound { get; set; }
+
+        [Parameter]
         public EventCallback<MouseEventArgs> OnClick { get; set; }
+
+        [Parameter]
+        public TriggerBoundaryAdjustMode BoundaryAdjustMode { get; set; } = TriggerBoundaryAdjustMode.InView;
+
+        [Parameter]
+        public ElementReference TriggerReference
+        {
+            get => _triggerReference;
+            set
+            {
+                _triggerReference = value;
+                RefBack.Set(value);
+            }
+        }
 
         [Inject]
         private DomEventService DomEventService { get; set; }
@@ -97,20 +146,74 @@ namespace AntDesign.Internal
         private bool _mouseInOverlay = false;
 
         protected Overlay _overlay = null;
+        private ElementReference _triggerReference;
 
         protected override void OnAfterRender(bool firstRender)
         {
             if (firstRender)
             {
                 DomEventService.AddEventListener("document", "mouseup", OnMouseUp, false);
+                DomEventService.AddEventListener("window", "resize", OnWindowResize, false);
+                DomEventService.AddEventListener("document", "scroll", OnWindowScroll, false);
             }
 
             base.OnAfterRender(firstRender);
         }
 
+        protected override Task OnAfterRenderAsync(bool firstRender)
+        {
+            if (firstRender && Unbound != null)
+            {
+                Ref = RefBack.Current;
+                DomEventService.AddEventListener(Ref, "click", OnUnboundClick, true);
+                DomEventService.AddEventListener(Ref, "mouseover", OnUnboundMouseEnter, true);
+                DomEventService.AddEventListener(Ref, "mouseout", OnUnboundMouseLeave, true);
+                DomEventService.AddEventListener(Ref, "focusin", OnUnboundFocusIn, true);
+                DomEventService.AddEventListener(Ref, "focusout", OnUnboundFocusOut, true);
+                DomEventService.AddEventListener(Ref, "contextmenu", OnContextMenu, true, true);
+            }
+            return base.OnAfterRenderAsync(firstRender);
+        }
+
+        private void OnUnboundMouseEnter(JsonElement jsonElement) => OnTriggerMouseEnter();
+
+        private void OnUnboundMouseLeave(JsonElement jsonElement) => OnTriggerMouseLeave();
+
+        private void OnUnboundFocusIn(JsonElement jsonElement) => OnTriggerFocusIn();
+
+        private void OnUnboundFocusOut(JsonElement jsonElement) => OnTriggerFocusOut();
+
+        private async void OnUnboundClick(JsonElement jsonElement)
+        {
+            var eventArgs = JsonSerializer.Deserialize<MouseEventArgs>(jsonElement.ToString(),
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+            await OnClickDiv(eventArgs);
+        }
+
+        private async void OnContextMenu(JsonElement jsonElement)
+        {
+            var eventArgs = JsonSerializer.Deserialize<MouseEventArgs>(jsonElement.ToString(),
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+            await OnTriggerContextmenu(eventArgs);
+        }
+
         protected override void Dispose(bool disposing)
         {
             DomEventService.RemoveEventListerner<JsonElement>("document", "mouseup", OnMouseUp);
+            DomEventService.RemoveEventListerner<JsonElement>("window", "resize", OnMouseUp);
+            DomEventService.RemoveEventListerner<JsonElement>("document", "scroll", OnWindowScroll);
+
+            if (Unbound != null)
+            {
+                DomEventService.RemoveEventListerner<JsonElement>(Ref, "click", OnUnboundClick);
+                DomEventService.RemoveEventListerner<JsonElement>(Ref, "mouseover", OnUnboundMouseEnter);
+                DomEventService.RemoveEventListerner<JsonElement>(Ref, "mouseout", OnUnboundMouseLeave);
+                DomEventService.RemoveEventListerner<JsonElement>(Ref, "focusin", OnUnboundFocusIn);
+                DomEventService.RemoveEventListerner<JsonElement>(Ref, "focusout", OnUnboundFocusOut);
+                DomEventService.RemoveEventListerner<JsonElement>(Ref, "contextmenu", OnContextMenu);
+            }
             base.Dispose(disposing);
         }
 
@@ -188,7 +291,7 @@ namespace AntDesign.Internal
             }
         }
 
-        protected virtual async Task OnClickDiv(MouseEventArgs args)
+        public virtual async Task OnClickDiv(MouseEventArgs args)
         {
             if (!IsButton)
             {
@@ -244,6 +347,21 @@ namespace AntDesign.Internal
             }
         }
 
+        protected async void OnWindowResize(JsonElement element)
+        {
+            RestorePlacement();
+
+            if (IsOverlayShow())
+            {
+                await GetOverlayComponent().UpdatePosition();
+            }
+        }
+
+        protected void OnWindowScroll(JsonElement element)
+        {
+            RestorePlacement();
+        }
+
         protected virtual bool IsContainTrigger(TriggerType triggerType)
         {
             return Trigger.Contains(triggerType);
@@ -259,8 +377,23 @@ namespace AntDesign.Internal
             await OnOverlayHiding.InvokeAsync(visible);
         }
 
-        protected virtual void OnOverlayShow() { }
-        protected virtual void OnOverlayHide() { }
+        protected virtual void OnOverlayShow()
+        {
+        }
+
+        protected virtual void OnOverlayHide()
+        {
+        }
+
+        internal void ChangePlacementForShow(PlacementType placement)
+        {
+            _placement = placement;
+        }
+
+        internal void RestorePlacement()
+        {
+            _placement = _paramPlacement;
+        }
 
         internal virtual string GetPlacementClass()
         {
@@ -305,7 +438,12 @@ namespace AntDesign.Internal
 
         internal virtual async Task Hide(bool force = false)
         {
-            if (!Visible || force) await _overlay.Hide(force);
+            if (Visible && !ComplexAutoCloseAndVisible && !force)
+            {
+                return;
+            }
+
+            await _overlay.Hide(force);
         }
 
         internal Overlay GetOverlayComponent()

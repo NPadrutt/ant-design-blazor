@@ -39,11 +39,15 @@ namespace AntDesign
 
         public static string Blur => $"{FUNC_PREFIX}blur";
 
-        public static string BackTop => $"{FUNC_PREFIX}BackTop";
+        public static string BackTop => $"{FUNC_PREFIX}backTop";
+
+        public static string ScrollTo => $"{FUNC_PREFIX}scrollTo";
 
         public static string GetFirstChildDomInfo => $"{FUNC_PREFIX}getFirstChildDomInfo";
 
         public static string AddClsToFirstChild => $"{FUNC_PREFIX}addClsToFirstChild";
+
+        public static string RemoveClsFromFirstChild => $"{FUNC_PREFIX}removeClsFromFirstChild";
 
         public static string AddDomEventListenerToFirstChild => $"{FUNC_PREFIX}addDomEventListenerToFirstChild";
 
@@ -80,6 +84,25 @@ namespace AntDesign
         public static string DisposeObj => $"{FUNC_PREFIX}disposeObj";
 
         public static string ElementScrollIntoView => $"{FUNC_PREFIX}elementScrollIntoView";
+
+        public static string BindTableHeaderAndBodyScroll => $"{FUNC_PREFIX}bindTableHeaderAndBodyScroll";
+
+        public static string UnbindTableHeaderAndBodyScroll => $"{FUNC_PREFIX}unbindTableHeaderAndBodyScroll";
+
+        public static string AddPreventKeys => $"{FUNC_PREFIX}addPreventKeys";
+
+        public static string RemovePreventKeys => $"{FUNC_PREFIX}removePreventKeys";
+
+        public static string AddPreventEnterOnOverlayVisible => $"{FUNC_PREFIX}addPreventEnterOnOverlayVisible";
+
+        public static string RemovePreventEnterOnOverlayVisible => $"{FUNC_PREFIX}removePreventEnterOnOverlayVisible";
+
+        public static string GetStyle => $"{FUNC_PREFIX}getStyle";
+
+        public static string RegisterResizeTextArea => $"{FUNC_PREFIX}registerResizeTextArea";
+
+        public static string DisposeResizeTextArea => $"{FUNC_PREFIX}disposeResizeTextArea";
+
         #region Draggable Modal
 
         public static string EnableDraggable => $"{FUNC_PREFIX}enableDraggable";

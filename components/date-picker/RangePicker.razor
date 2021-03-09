@@ -34,9 +34,9 @@
                 }
             </div>
         </Overlay>
-        <ChildContent>
+        <Unbound>
             <div class="@ClassMapper.Class"
-                 @ref="@Ref"
+                 @ref="@context.Current"
                  style="@Style"
                  Id="@Id">
                 <DatePickerInput @ref="_inputStart"
@@ -49,6 +49,8 @@
                                  AutoFocus="@AutoFocus"
                                  OnClick="async e => { await OnInputClick(0); }"
                                  OnInput="e => OnInput(e, 0)"
+                                 OnKeyUp="e => OnKeyUp(e, 0)"
+                                 Onfocus="() => OnFocus(0)"
                                  ShowTime="@(Picker == DatePickerType.Time)"
                                  ShowSuffixIcon="false"
                                  IsRange="@IsRange"
@@ -70,13 +72,15 @@
                                  ReadOnly="@InputReadOnly"
                                  AutoFocus="@AutoFocus"
                                  OnClick="async e => { await OnInputClick(1); }"
-                                 OnInput="e => OnInput(e, 0)"
+                                 OnInput="e => OnInput(e, 1)"
+                                 OnKeyUp="e => OnKeyUp(e, 1)"
+                                 Onfocus="() => OnFocus(1)"
                                  ShowTime="@(Picker == DatePickerType.Time)"
                                  IsRange="@IsRange"
                                  AllowClear="@AllowClear"
                                  OnClickClear="e => ClearValue(0)" />
                 <div class="@(PrefixCls)-active-bar" style="@_activeBarStyle"></div>
             </div>
-        </ChildContent>
+        </Unbound>
     </OverlayTrigger>
 </CascadingValue>

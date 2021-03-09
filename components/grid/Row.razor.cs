@@ -7,7 +7,17 @@ using OneOf;
 
 namespace AntDesign
 {
-    using GutterType = OneOf<int, Dictionary<string, int>, (int, int)>;
+    /*
+     * Possible values and meaning
+     * int                                                  - horizontal gutter
+     * Dictionary<string, int>                              - horizontal gutters for different screen sizes
+     * (int, int)                                           - horizontal gutter, vertical gutter
+     * (Dictionary<string, int>, int)                       - horizontal gutters for different screen sizes, vertical gutter
+     * (int, Dictionary<string, int>)                       - horizontal gutter, vertical gutter for different screen sizes
+     * (Dictionary<string, int>, Dictionary<string, int>)   - horizontal gutters for different screen sizes, vertical gutter for different screen sizes
+     */
+
+    using GutterType = OneOf<int, Dictionary<string, int>, (int, int), (Dictionary<string, int>, int), (int, Dictionary<string, int>), (Dictionary<string, int>, Dictionary<string, int>)>;
 
     public partial class Row : AntDomComponentBase
     {
@@ -32,6 +42,15 @@ namespace AntDesign
         [Parameter]
         public GutterType Gutter { get; set; }
 
+        [Parameter]
+        public EventCallback<BreakpointType> OnBreakpoint { get; set; }
+
+        /// <summary>
+        /// Used to set gutter during pre-rendering
+        /// </summary>
+        [Parameter]
+        public BreakpointType DefaultBreakpoint { get; set; }
+
         [Inject]
         public DomEventService DomEventService { get; set; }
 
@@ -39,14 +58,13 @@ namespace AntDesign
 
         public IList<Col> Cols { get; } = new List<Col>();
 
-        private static Hashtable _gridResponsiveMap = new Hashtable()
-        {
-            [nameof(BreakpointEnum.xs)] = "(max-width: 575px)",
-            [nameof(BreakpointEnum.sm)] = "(max-width: 576px)",
-            [nameof(BreakpointEnum.md)] = "(max-width: 768px)",
-            [nameof(BreakpointEnum.lg)] = "(max-width: 992px)",
-            [nameof(BreakpointEnum.xl)] = "(max-width: 1200px)",
-            [nameof(BreakpointEnum.xxl)] = "(max-width: 1600px)",
+        private static BreakpointType[] _breakpoints = new[] {
+            BreakpointType.Xs,
+            BreakpointType.Sm,
+            BreakpointType.Md,
+            BreakpointType.Lg,
+            BreakpointType.Xl,
+            BreakpointType.Xxl
         };
 
         protected override async Task OnInitializedAsync()
@@ -63,6 +81,11 @@ namespace AntDesign
                 .If($"{prefixCls}-space-between", () => Justify == "space-between")
                 ;
 
+            if (DefaultBreakpoint != null)
+            {
+                SetGutterStyle(DefaultBreakpoint.Name);
+            }
+
             await base.OnInitializedAsync();
         }
 
@@ -70,45 +93,53 @@ namespace AntDesign
         {
             if (firstRender)
             {
-                DomEventService.AddEventListener<object>("window", "resize", OnResize, false);
-
-                await this.SetGutterStyle();
+                var dimensions = await JsInvokeAsync<Window>(JSInteropConstants.GetWindow);
+                DomEventService.AddEventListener<Window>("window", "resize", OnResize, false);
+                OptimizeSize(dimensions.innerWidth);
             }
 
             await base.OnAfterRenderAsync(firstRender);
         }
 
-        private async void OnResize(object o)
+        private async void OnResize(Window window)
         {
-            await SetGutterStyle();
+            OptimizeSize(window.innerWidth);
         }
 
-        private async Task SetGutterStyle()
+        private void OptimizeSize(decimal windowWidth)
         {
-            string breakPoint = null;
-
-            await typeof(BreakpointEnum).GetEnumNames().ForEachAsync(async bp =>
+            BreakpointType actualBreakpoint = _breakpoints[_breakpoints.Length - 1];
+            for (int i = 0; i < _breakpoints.Length; i++)
             {
-                if (await JsInvokeAsync<bool>(JSInteropConstants.MatchMedia, _gridResponsiveMap[bp]))
+                if (windowWidth <= _breakpoints[i].Width && (windowWidth >= (i > 0 ? _breakpoints[i - 1].Width : 0)))
                 {
-                    breakPoint = bp;
+                    actualBreakpoint = _breakpoints[i];
                 }
-            });
+            }
 
+            SetGutterStyle(actualBreakpoint.Name);
+
+            if (OnBreakpoint.HasDelegate)
+            {
+                OnBreakpoint.InvokeAsync(actualBreakpoint);
+            }
+
+            StateHasChanged();
+        }
+
+        private void SetGutterStyle(string breakPoint)
+        {
             var gutter = this.GetGutter(breakPoint);
             Cols.ForEach(x => x.RowGutterChanged(gutter));
 
             GutterStyle = "";
             if (gutter.horizontalGutter > 0)
             {
-                GutterStyle = $"margin-left: -{gutter.horizontalGutter / 2}px;margin-right: -{gutter.horizontalGutter / 2}px;";
+                GutterStyle = $"margin-left: -{gutter.horizontalGutter / 2}px; margin-right: -{gutter.horizontalGutter / 2}px; ";
             }
-            if (gutter.verticalGutter > 0)
-            {
-                GutterStyle += $"margin-top: -{gutter.verticalGutter / 2}px;margin-bottom: -{gutter.verticalGutter / 2}px;";
-            }
+            GutterStyle += $"row-gap: {gutter.verticalGutter}px; ";
 
-            InvokeStateHasChanged();
+            StateHasChanged();
         }
 
         private (int horizontalGutter, int verticalGutter) GetGutter(string breakPoint)
@@ -120,7 +151,10 @@ namespace AntDesign
             return gutter.Match(
                 num => (num, 0),
                 dic => breakPoint != null && dic.ContainsKey(breakPoint) ? (dic[breakPoint], 0) : (0, 0),
-                tuple => tuple
+                tuple => tuple,
+                tupleDicInt => (tupleDicInt.Item1.ContainsKey(breakPoint) ? tupleDicInt.Item1[breakPoint] : 0, tupleDicInt.Item2),
+                tupleIntDic => (tupleIntDic.Item1, tupleIntDic.Item2.ContainsKey(breakPoint) ? tupleIntDic.Item2[breakPoint] : 0),
+                tupleDicDic => (tupleDicDic.Item1.ContainsKey(breakPoint) ? tupleDicDic.Item1[breakPoint] : 0, tupleDicDic.Item2.ContainsKey(breakPoint) ? tupleDicDic.Item2[breakPoint] : 0)
             );
         }
 
@@ -128,7 +162,7 @@ namespace AntDesign
         {
             base.Dispose(disposing);
 
-            DomEventService.RemoveEventListerner<object>("window", "resize", OnResize);
+            DomEventService.RemoveEventListerner<Window>("window", "resize", OnResize);
         }
     }
 

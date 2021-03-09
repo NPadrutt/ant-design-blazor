@@ -11,8 +11,8 @@
               EditContext="_editContext"
               OnValidSubmit="OnValidSubmit"
               OnInvalidSubmit="OnInvalidSubmit">
-        <ObjectGraphDataAnnotationsValidator />
-        <CascadingValue Value="this" Name="Form" TValue="IForm">
+        @Validator
+        <CascadingValue Value="this" Name="Form" TValue="IForm" IsFixed="@true">
             @if (!string.IsNullOrEmpty(Size))
             {
                 <CascadingValue Value="Size" Name="FormSize">

@@ -1,7 +1,6 @@
 ﻿using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using OneOf;
-using System;
 using System.Threading.Tasks;
 
 namespace AntDesign
@@ -21,7 +20,6 @@ namespace AntDesign
 
         protected override bool EnableOnPressEnter => OnSearch.HasDelegate || OnPressEnter.HasDelegate;
 
-        private int _sequence = 0;
 
         protected override void OnInitialized()
         {
@@ -31,18 +29,17 @@ namespace AntDesign
             {
                 Suffix = builder =>
                 {
-                    var i = 0;
-                    builder.OpenComponent<Icon>(i++);
-                    builder.AddAttribute(i++, "Class", $"{PrefixCls}-search-icon");
+                    builder.OpenComponent<Icon>(1);
+                    builder.AddAttribute(2, "Class", $"{PrefixCls}-search-icon");
                     if (Loading)
                     {
-                        builder.AddAttribute(i++, "Type", "loading");
+                        builder.AddAttribute(3, "Type", "loading");
                     }
                     else
                     {
-                        builder.AddAttribute(i++, "Type", "search");
+                        builder.AddAttribute(4, "Type", "search");
                     }
-                    builder.AddAttribute(i++, "OnClick", CallbackFactory.Create<MouseEventArgs>(this, HandleSearch));
+                    builder.AddAttribute(5, "OnClick", CallbackFactory.Create<MouseEventArgs>(this, HandleSearch));
                     builder.CloseComponent();
                 };
             }
@@ -50,31 +47,27 @@ namespace AntDesign
             {
                 AddOnAfter = builder =>
                 {
-                    builder.OpenComponent<Button>(_sequence++);
-                    builder.AddAttribute(_sequence++, "Class", $"{PrefixCls}-search-button");
-                    builder.AddAttribute(_sequence++, "Type", "primary");
-                    builder.AddAttribute(_sequence++, "Size", Size);
-
-                    if (Loading)
+                    builder.OpenComponent<Button>(6);
+                    builder.AddAttribute(7, "Class", $"{PrefixCls}-search-button");
+                    builder.AddAttribute(8, "Type", "primary");
+                    builder.AddAttribute(9, "Size", Size);
+                    builder.AddAttribute(10, "Loading", Loading);
+                    if (!Loading)
                     {
-                        builder.AddAttribute(_sequence++, "Loading", true);
-                    }
-                    else
-                    {
-                        builder.AddAttribute(_sequence++, "OnClick", CallbackFactory.Create<MouseEventArgs>(this, HandleSearch));
+                        builder.AddAttribute(11, "OnClick", CallbackFactory.Create<MouseEventArgs>(this, HandleSearch));
                     }
 
                     EnterButton.Switch(boolean =>
                     {
                         if (boolean)
                         {
-                            builder.AddAttribute(_sequence++, "Icon", "search");
+                            builder.AddAttribute(12, "Icon", "search");
                         }
                     }, str =>
                     {
-                        builder.AddAttribute(_sequence++, "ChildContent", new RenderFragment((b) =>
+                        builder.AddAttribute(13, "ChildContent", new RenderFragment((b) =>
                         {
-                            b.AddContent(_sequence++, str);
+                            b.AddContent(14, str);
                         }));
                     });
 

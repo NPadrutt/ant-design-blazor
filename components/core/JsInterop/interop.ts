@@ -35,22 +35,21 @@ export function getDomInfo(element) {
 }
 
 function getElementAbsolutePos(element) {
-    var res:any = new Object();
-    res.x = 0; res.y = 0;
-    if (element !== null) {
-        if (element.getBoundingClientRect) {
-            var viewportElement = document.documentElement;
-            var box = element.getBoundingClientRect();
-            var scrollLeft = viewportElement.scrollLeft;
-            var scrollTop = viewportElement.scrollTop;
+  var res: any = new Object();
+  res.x = 0; res.y = 0;
+  if (element !== null) {
+    if (element.getBoundingClientRect) {
+      var viewportElement = document.documentElement;
+      var box = element.getBoundingClientRect();
+      var scrollLeft = viewportElement.scrollLeft;
+      var scrollTop = viewportElement.scrollTop;
 
-            res.x = box.left + scrollLeft;
-            res.y = box.top + scrollTop;
-        }
+      res.x = box.left + scrollLeft;
+      res.y = box.top + scrollTop;
     }
-    return res;
+  }
+  return res;
 }
-
 
 export function addFileClickEventListener(btn) {
   if ((btn as HTMLElement).addEventListener) {
@@ -154,11 +153,13 @@ export function getBoundingClientRect(element) {
   return null;
 }
 
-export function addDomEventListener(element, eventName, invoker) {
+export function addDomEventListener(element, eventName, preventDefault, invoker) {
   let callback = args => {
     const obj = {};
     for (let k in args) {
-      obj[k] = args[k];
+      if (k !== 'originalTarget') { //firefox occasionally raises Permission Denied when this property is being stringified
+        obj[k] = args[k];
+      }
     }
     let json = JSON.stringify(obj, (k, v) => {
       if (v instanceof Node) return 'Node';
@@ -166,6 +167,9 @@ export function addDomEventListener(element, eventName, invoker) {
       return v;
     }, ' ');
     invoker.invokeMethodAsync('Invoke', json);
+    if (preventDefault === true) {
+      args.preventDefault();
+    }
   };
 
   if (element == 'window') {
@@ -233,7 +237,7 @@ export function log(text) {
   console.log(text);
 }
 
-export function BackTop(target: string) {
+export function backTop(target: string) {
   let dom = getDom(target);
   if (dom) {
     slideTo(dom.scrollTop);
@@ -255,9 +259,22 @@ function slideTo(targetPageY) {
   }, 10);
 }
 
+export function scrollTo(target) {
+  let dom = getDom(target);
+  if (dom instanceof HTMLElement) {
+    dom.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+      inline: "nearest"
+    });
+  }
+}
+
 export function getFirstChildDomInfo(element) {
   var dom = getDom(element);
-  return getDomInfo(dom.firstElementChild);
+  if (dom.firstElementChild)
+    return getDomInfo(dom.firstElementChild);
+  return getDomInfo(dom);
 }
 
 export function addClsToFirstChild(element, className) {
@@ -267,11 +284,18 @@ export function addClsToFirstChild(element, className) {
   }
 }
 
-export function addDomEventListenerToFirstChild(element, eventName, invoker) {
+export function removeClsFromFirstChild(element, className) {
+  var dom = getDom(element);
+  if (dom.firstElementChild) {
+    dom.firstElementChild.classList.remove(className);
+  }
+}
+
+export function addDomEventListenerToFirstChild(element, eventName, preventDefault, invoker) {
   var dom = getDom(element);
 
   if (dom.firstElementChild) {
-    addDomEventListener(dom.firstElementChild, eventName, invoker);
+    addDomEventListener(dom.firstElementChild, eventName, preventDefault, invoker);
   }
 }
 
@@ -389,12 +413,12 @@ export function removeCls(selector: Element | string, clsName: string | Array<st
 }
 
 export function elementScrollIntoView(selector: Element | string) {
-    let element = getDom(selector);
+  let element = getDom(selector);
 
-    if(!element)
-        return;
+  if (!element)
+    return;
 
-    element.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'start' });
+  element.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'start' });
 }
 
 const oldBodyCacheStack = [];
@@ -434,8 +458,8 @@ export function enableBodyScroll() {
 }
 
 export function destroyAllDialog() {
-    document.querySelectorAll('.ant-modal-root')
-        .forEach(e => document.body.removeChild(e.parentNode));
+  document.querySelectorAll('.ant-modal-root')
+    .forEach(e => document.body.removeChild(e.parentNode));
 }
 
 export function createIconFromfontCN(scriptUrl) {
@@ -460,6 +484,88 @@ export function getInnerText(element) {
 export function getMaxZIndex() {
   return [...document.all].reduce((r, e) => Math.max(r, +window.getComputedStyle(e).zIndex || 0), 0)
 }
+
+export function getStyle(element, styleProp) {        
+  if (element.currentStyle)
+    return element.currentStyle[styleProp];
+  else if (window.getComputedStyle)
+    return document.defaultView.getComputedStyle(element, null).getPropertyValue(styleProp);
+}
+
+export function getTextAreaInfo(element) {
+    var result = {};
+    var dom = getDom(element);
+    result["scrollHeight"] = dom.scrollHeight || 0;
+
+  if (element.currentStyle) {
+    result["lineHeight"] = parseFloat(element.currentStyle["line-height"]);
+    result["paddingTop"] = parseFloat(element.currentStyle["padding-top"]);
+    result["paddingBottom"] = parseFloat(element.currentStyle["padding-bottom"]);
+    result["borderBottom"] = parseFloat(element.currentStyle["border-bottom"]);
+    result["borderTop"] = parseFloat(element.currentStyle["border-top"]);
+  }
+  else if (window.getComputedStyle) {
+    result["lineHeight"] = parseFloat(document.defaultView.getComputedStyle(element, null).getPropertyValue("line-height"));
+    result["paddingTop"] = parseFloat(document.defaultView.getComputedStyle(element, null).getPropertyValue("padding-top"));
+    result["paddingBottom"] = parseFloat(document.defaultView.getComputedStyle(element, null).getPropertyValue("padding-bottom"));
+    result["borderBottom"] = parseFloat(document.defaultView.getComputedStyle(element, null).getPropertyValue("border-bottom"));
+    result["borderTop"] = parseFloat(document.defaultView.getComputedStyle(element, null).getPropertyValue("border-top"));
+  }
+  return result;
+}
+
+
+const funcDict = {};
+
+export function registerResizeTextArea(element, minRows, maxRows, objReference) {
+    if (!objReference) {
+        disposeResizeTextArea(element);
+    }
+    else {
+        objReferenceDict[element.id] = objReference;
+        funcDict[element.id + "input"] = function () { resizeTextArea(element, minRows, maxRows); }
+        element.addEventListener("input", funcDict[element.id + "input"]);
+        return getTextAreaInfo(element);
+    }
+}
+
+export function disposeResizeTextArea(element) {
+    element.removeEventListener("input", funcDict[element.id + "input"]);
+    objReferenceDict[element.id] = null;
+    funcDict[element.id + "input"] = null;
+
+}
+
+export function resizeTextArea(element, minRows, maxRows) {
+    var dims = getTextAreaInfo(element);
+    var rowHeight = dims["lineHeight"];
+    var offsetHeight = dims["paddingTop"] + dims["paddingBottom"] + dims["borderTop"] + dims["borderBottom"];
+    var oldHeight = parseFloat(element.style.height);
+    element.style.height = 'auto';
+    
+    var rows = Math.trunc(element.scrollHeight / rowHeight);
+    rows = Math.max(minRows, rows);
+
+    var newHeight = 0;
+    if (rows > maxRows) {
+        rows = maxRows;
+
+        newHeight = (rows * rowHeight + offsetHeight);
+        element.style.height = newHeight + "px";
+        element.style.overflowY = "visible";
+    }
+    else {
+        newHeight = rows * rowHeight + offsetHeight;
+        element.style.height = newHeight + "px";
+        element.style.overflowY = "hidden";
+    }
+    if (oldHeight !== newHeight) {
+        let textAreaObj = objReferenceDict[element.id];
+        textAreaObj.invokeMethodAsync("ChangeSizeAsyncJs", parseFloat(element.scrollWidth), newHeight);
+    }
+}
+
+
 
 const objReferenceDict = {};
 export function disposeObj(objReferenceName) {
@@ -491,3 +597,55 @@ function mentionsOnWindowClick(e) {
 //#endregion
 
 export { enableDraggable, disableDraggable, resetModalPosition } from "./modules/dragHelper";
+
+export function bindTableHeaderAndBodyScroll(bodyRef, headerRef) {
+  bodyRef.bindScrollLeftToHeader = () => {
+    headerRef.scrollLeft = bodyRef.scrollLeft;
+  }
+  bodyRef.addEventListener('scroll', bodyRef.bindScrollLeftToHeader);
+}
+
+export function unbindTableHeaderAndBodyScroll(bodyRef) {
+  if (bodyRef) {
+    bodyRef.removeEventListener('scroll', bodyRef.bindScrollLeftToHeader);
+  }
+}
+
+function preventKeys(e, keys: string[]) {
+  if (keys.indexOf(e.key.toUpperCase()) !== -1) {
+    e.preventDefault();
+    return false;
+  }
+}
+
+export function addPreventKeys(inputElement, keys: string[]) {
+  let dom = getDom(inputElement);   
+  keys = keys.map(function (x) { return x.toUpperCase(); })
+  funcDict[inputElement.id + "keydown"] = (e) => preventKeys(e, keys);
+    (dom as HTMLElement).addEventListener("keydown", funcDict[inputElement.id + "keydown"], false);
+}
+
+export function removePreventKeys(inputElement) {
+  let dom = getDom(inputElement);            
+  (dom as HTMLElement).removeEventListener("keydown", funcDict[inputElement.id + "keydown"]);
+  funcDict[inputElement.id + "keydown"] = null;
+}
+
+function preventKeyOnCondition(e, key: string, check: () => boolean) {
+  if (e.key.toUpperCase() === key.toUpperCase() && check()) {
+    e.preventDefault();
+    return false;
+  }
+}
+
+export function addPreventEnterOnOverlayVisible(element, overlayElement) {
+  let dom = getDom(element);   
+  funcDict[element.id + "keydown:Enter"] = (e) => preventKeyOnCondition(e, "enter", () => overlayElement.offsetParent !== null);
+  (dom as HTMLElement).addEventListener("keydown", funcDict[element.id + "keydown:Enter"], false);
+}
+
+export function removePreventEnterOnOverlayVisible(element) {
+  let dom = getDom(element);
+  (dom as HTMLElement).removeEventListener("keydown", funcDict[element.id + "keydown:Enter"]);
+  funcDict[element.id + "keydown:Enter"] = null;
+}
