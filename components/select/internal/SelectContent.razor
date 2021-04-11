@@ -2,95 +2,16 @@
 @namespace AntDesign.Select.Internal
 @typeparam TItemValue
 @typeparam TItem
-@{
-    bool showPrefixAsSeparate = false;
-    bool showPrefixInSelected = false;
-        
-    if (ParentSelect.PrefixIcon != null)
-    {
-        showPrefixAsSeparate = ParentSelect.PrefixIcon != null && !(ParentSelect.SelectMode != SelectMode.Default && ParentSelect.SelectedOptionItems.Any());
-        showPrefixInSelected = !showPrefixAsSeparate;
-    }       
-}
 
-
-<div class="@Prefix-selector" @ref="@Ref" style="@(ParentSelect.PrefixIcon is null?"":"padding-left: 4px;")">
-    @if (showPrefixAsSeparate)
-    {
-        <span class="@Prefix-prefix" unselectable="on" aria-hidden="true" style="user-select: none;display:flex;align-items: center;padding-right: 4px;" >
-            @ParentSelect.PrefixIcon
-        </span>        
-    }
-    <div style="display: flex;position: relative;flex-grow: 1;flex-wrap: wrap;align-items: center;">
-        @if (ShowPlaceholder)
-        {                    
-            @if (showPrefixAsSeparate)
-            {
-                <span class="@Prefix-selection-placeholder" style="left: 0px;">@Placeholder</span>
-            }
-            else
-            {                
-                <span class="@Prefix-selection-placeholder">@Placeholder</span>
-            }
-        }
-        else
+@if (ParentSelect.SelectMode == SelectMode.Default)
+{
+    <div class="@Prefix-selector" @ref="@Ref" style="@(ParentSelect.PrefixIcon is null?"":"padding-left: 4px;")">
+        @if (ParentSelect.PrefixIcon != null)
         {
-            @if (ParentSelect.SelectMode == SelectMode.Default)
-            {                            
-                var selectedItem = ParentSelect.SelectedOptionItems.FirstOrDefault();
-                //Console.WriteLine($"({ParentSelect.Id}): {selectedItem.Value} => {selectedItem.Label}");
-                if (string.IsNullOrEmpty(SearchValue) && selectedItem != null)
-                {
-                    @if (ParentLabelTemplate != null)
-                    {
-                        <CascadingValue Value="this" Name="SelectContent">
-                            <CascadingValue Value="@selectedItem" Name="SelectOption">                                
-                                @ParentLabelTemplate(selectedItem.Item)                                
-                            </CascadingValue>
-                        </CascadingValue>
-                    }
-                    else
-                    {                        
-                        <span class="@Prefix-selection-item">
-                            <span class="@Prefix-selection-item-content">@selectedItem.Label</span>
-                        </span>
-                    }
-                }
-            }
-            else
-            {
-                var selectedItems = ParentSelect.SelectedOptionItems;
-
-                @if (showPrefixInSelected) 
-                {
-                    <span class="@Prefix-prefix" unselectable="on" aria-hidden="true" style="user-select: none;display:flex;align-items: center;padding-right: 4px;" >
-                        @ParentSelect.PrefixIcon
-                    </span>
-                }                
-                @foreach (var selectedOption in selectedItems)
-                {
-                    @if (ParentLabelTemplate != null)
-                    {
-                        <CascadingValue Value="this" Name="SelectContent">
-                            <CascadingValue Value="@selectedOption" Name="SelectOption">
-                                @ParentLabelTemplate(selectedOption.Item)                            
-                            </CascadingValue>
-                            </CascadingValue>
-                    }
-                    else
-                    {
-                        <span class="@Prefix-selection-item">
-                            <span class="@Prefix-selection-item-content">@selectedOption.Label</span>
-                            <span unselectable="on" aria-hidden="true" style="user-select: none;" class="@Prefix-selection-item-remove"
-                                    @onclick="()=> OnRemoveSelected.InvokeAsync(selectedOption)" @onclick:stopPropagation="true">
-                                <Icon Type="close"></Icon>
-                            </span>
-                        </span>                                        
-                    }
-                }
-            }
+            <span class="@Prefix-prefix" unselectable="on" aria-hidden="true" style="user-select: none;display:flex;align-items: center;padding-right: 4px;">
+                @ParentSelect.PrefixIcon
+            </span>
         }
-
         <span class="@Prefix-selection-search" style="@_inputWidth">
             <input @ref="ParentSelect._inputRef"
                     @oninput="OnInput"
@@ -98,7 +19,7 @@
                     @onkeydown="OnKeyDown"
                     @onfocus="OnFocus"
                     @onblur="OnBlur"
-                    @attributes=@AdditonalAttributes() 
+                    @attributes=@AdditonalAttributes()
                     @onkeypress="@OnKeyPressEventHandler"
                     @onkeypress:preventDefault="@_suppressInput"
                     @onkeypress:stopPropagation="true"
@@ -112,18 +33,35 @@
                     aria-autocomplete="list"
                     aria-controls="@(ParentSelect.Id)_list"
                     style="@_inputStyle"/>
-
-            @if (ParentSelect.SelectMode != SelectMode.Default)
-            {
-                <span class="@Prefix-selection-search-mirror" aria-hidden="true">&nbsp;</span>
-            }
         </span>
+        @if (ShowPlaceholder)
+        {
+            <span class="@Prefix-selection-placeholder">@Placeholder</span>
+        }
+        else
+        {
+            var selectedItem = ParentSelect.SelectedOptionItems.FirstOrDefault();
+            if (string.IsNullOrEmpty(SearchValue) && selectedItem != null)
+            {
+                @if (ParentLabelTemplate != null)
+                {
+                    <CascadingValue Value="this" Name="SelectContent">
+                        <CascadingValue Value="@selectedItem" Name="SelectOption">
+                            @ParentLabelTemplate(selectedItem.Item)
+                        </CascadingValue>
+                    </CascadingValue>
+                }
+                else
+                {
+                    <span class="@Prefix-selection-item">
+                        @selectedItem.Label
+                    </span>
+                }
+            }
+        }    
     </div>
-</div>
 
-@if (ParentSelect.SelectMode == SelectMode.Default)
-{
-    if (ParentSelect.SuffixIcon != null)
+    @if (ParentSelect.SuffixIcon != null)
     {
         <span class="ant-select-arrow" unselectable="on" aria-hidden="true" style="user-select: none;" @onclick="@ParentSelect.OnArrowClick" @onclick:stopPropagation="true">
             @ParentSelect.SuffixIcon
@@ -165,7 +103,7 @@
                 }
             </span>
         }
-        
+
         @if (!ParentSelect.Disabled && ParentSelect.AllowClear && ParentSelect.HasValue)
         {
             <span class="ant-select-clear" unselectable="on" aria-hidden="true" style="user-select: none;" @onclick="OnClearClick" @onclick:stopPropagation="true">
@@ -173,13 +111,94 @@
             </span>
         }
     }
+
 }
-else
-{
+else //ParentSelect.SelectMode != SelectMode.Default
+{    
+    <div class="@Prefix-selector" @ref="@Ref" style="@(ParentSelect.PrefixIcon is null?"":"padding-left: 4px;")">
+        <div class="@Prefix-selection-overflow">
+            @if (ParentSelect.PrefixIcon != null)
+            {
+                <div class="@Prefix-selection-overflow-item" style="opacity: 1;">
+                    <span class="@Prefix-prefix" unselectable="on" aria-hidden="true" style="user-select: none;display:flex;align-items: center;padding-right: 4px;min-height:28px;">
+                        @ParentSelect.PrefixIcon
+                    </span>
+                </div>
+            }
+            @if (!ShowPlaceholder)
+            {
+                var selectedItems = ParentSelect.SelectedOptionItems;
+                                
+                string firstAfterPrefix = $"max-width: {GetFirstItemMaxWidth()}%;";
+                @foreach (var selectedOption in selectedItems)
+                {
+                    @if (ParentLabelTemplate != null)
+                    {
+                        <CascadingValue Value="this" Name="SelectContent">
+                            <CascadingValue Value="@selectedOption" Name="SelectOption">
+                                <div class="@Prefix-selection-overflow-item" style="opacity: 1;@firstAfterPrefix">
+                                    @ParentLabelTemplate(selectedOption.Item)
+                                </div>
+                            </CascadingValue>
+                        </CascadingValue>
+                    }
+                    else
+                    {
+                        <div class="@Prefix-selection-overflow-item" style="opacity: 1;@firstAfterPrefix">
+                            <span class="@Prefix-selection-item">
+                                <span class="@Prefix-selection-item-content">@selectedOption.Label</span>
+                                <span unselectable="on" aria-hidden="true" style="user-select: none;" class="@Prefix-selection-item-remove"
+                                        @onclick="()=> OnRemoveSelected.InvokeAsync(selectedOption)" @onclick:stopPropagation="true">
+                                    <Icon Type="close"></Icon>
+                                </span>
+                            </span>
+                        </div>
+                    }
+                    firstAfterPrefix = "max-width: 98%;";                    
+                }
+            }
+            <div class="@Prefix-selection-overflow-item @Prefix-selection-overflow-item-suffix" style="opacity: 1;">
+                <div class="@Prefix-selection-search" style="@_inputWidth">
+                    <input @ref="ParentSelect._inputRef"
+                            @oninput="OnInput"
+                            @onkeyup="OnKeyUp"
+                            @onkeydown="OnKeyDown"
+                            @onfocus="OnFocus"
+                            @onblur="OnBlur"
+                            @attributes=@AdditonalAttributes()
+                            @onkeypress="@OnKeyPressEventHandler"
+                            @onkeypress:preventDefault="@_suppressInput"
+                            @onkeypress:stopPropagation="true"
+                            @bind-value="@SearchValue"
+                            id="@ParentSelect.Id"
+                            role="combobox"
+                            class="@Prefix-selection-search-input"
+                            autocomplete="off"
+                            aria-owns="@(ParentSelect.Id)_list"
+                            aria-expanded="@IsOverlayShow"
+                            aria-autocomplete="list"
+                            aria-controls="@(ParentSelect.Id)_list"
+                            style="@_inputStyle"/>        
+                    <span class="@Prefix-selection-search-mirror" aria-hidden="true">&nbsp;</span>
+                </div>
+            </div>
+            @if (ShowPlaceholder)
+            {
+                <span class="@Prefix-selection-placeholder" style="@(ParentSelect.PrefixIcon != null?"margin-left: 7px;":"")">@Placeholder</span>
+            }
+        </div>
+    </div>
+
     @if (ParentSelect.SuffixIcon != null)
     {
         <span class="ant-select-arrow" unselectable="on" aria-hidden="true" style="user-select: none;" @onclick="@ParentSelect.OnArrowClick" @onclick:stopPropagation="true">
             @ParentSelect.SuffixIcon
+        </span>
+    }
+    else if (ParentSelect.Loading)
+    {
+        <span class="ant-select-arrow ant-select-arrow-loading" unselectable="on" aria-hidden="true" style="user-select: none;">
+            <Icon Type="loading"></Icon>
         </span>
     }
     @if (!ParentSelect.Disabled && ParentSelect.AllowClear && ParentSelect.HasValue)
