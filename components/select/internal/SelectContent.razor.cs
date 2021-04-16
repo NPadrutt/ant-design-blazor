@@ -1,7 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
+using AntDesign.Core.Extensions;
 using AntDesign.JsInterop;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
@@ -15,6 +17,7 @@ namespace AntDesign.Select.Internal
     {
         [CascadingParameter(Name = "ParentSelect")] internal Select<TItemValue, TItem> ParentSelect { get; set; }
         [CascadingParameter(Name = "ParentLabelTemplate")] internal RenderFragment<TItem> ParentLabelTemplate { get; set; }
+        [CascadingParameter(Name = "ParentMaxTagPlaceholerTemplate")] internal RenderFragment<IEnumerable<TItem>> ParentMaxTagPlaceholerTemplate { get; set; }
         [CascadingParameter(Name = "ShowSearchIcon")] internal bool ShowSearchIcon { get; set; }
         [CascadingParameter(Name = "ShowArrowIcon")] internal bool ShowArrowIcon { get; set; }
         [Parameter]
@@ -51,17 +54,35 @@ namespace AntDesign.Select.Internal
             }
         }
 
+        private const char Ellipse = (char)0x2026;
+        private const int ItemMargin = 4; //taken from each tag item 
         private string _inputStyle = string.Empty;
         private string _inputWidth;
         private bool _suppressInput;
-        private ElementReference _ref;
         private bool _isInitialized;
         private string _prefix;
+        private int _calculatedMaxCount;
+        private int _lastInputWidth;
+
+        private ElementReference _ref;
+        private ElementReference _overflow;
+        private ElementReference _aggregateTag;
+        private ElementReference _prefixRef;
+        private ElementReference _suffixRef;
+        private DomRect _overflowElement;
+        private DomRect _aggregateTagElement;
+        private DomRect _prefixElement = new();
+        private DomRect _suffixElement = new();
+        private int _currentItemCount;
+        private Guid _internalId = Guid.NewGuid();
+        private bool _refocus;
 
         protected override void OnInitialized()
         {
             if (!_isInitialized)
+            {
                 SetInputWidth();
+            }
             _isInitialized = true;
             SetSuppressInput();
         }
@@ -69,13 +90,124 @@ namespace AntDesign.Select.Internal
         protected override async Task OnAfterRenderAsync(bool firstRender)
         {
             SetSuppressInput();
-            if (firstRender && ParentSelect.EnableSearch)
+            if (firstRender)
             {
-                DomEventService.AddEventListener("window", "beforeunload", Reloading, false);
-                await Js.InvokeVoidAsync(JSInteropConstants.AddPreventKeys, ParentSelect._inputRef, new[] { "ArrowUp", "ArrowDown" });
-                await Js.InvokeVoidAsync(JSInteropConstants.AddPreventEnterOnOverlayVisible, ParentSelect._inputRef, ParentSelect.DropDownRef);
+                if (ParentSelect.EnableSearch)
+                {
+                    DomEventService.AddEventListener("window", "beforeunload", Reloading, false);
+                    await Js.InvokeVoidAsync(JSInteropConstants.AddPreventKeys, ParentSelect._inputRef, new[] { "ArrowUp", "ArrowDown" });
+                    await Js.InvokeVoidAsync(JSInteropConstants.AddPreventEnterOnOverlayVisible, ParentSelect._inputRef, ParentSelect.DropDownRef);
+                }
+                if (ParentSelect.IsResponsive)
+                {
+                    _currentItemCount = ParentSelect.SelectedOptionItems.Count;
+                    //even though it is run in OnAfterRender, it may happen that the browser
+                    //did not manage to render yet the element; force a continuous check 
+                    //until the element gets the id                    
+                    while (_aggregateTag.Id is null)
+                    {
+                        await Task.Delay(5);
+                    }
+
+                    _aggregateTagElement = await Js.InvokeAsync<DomRect>(JSInteropConstants.GetBoundingClientRect, _aggregateTag, _aggregateTag.Id, true);
+
+                    if (_prefixRef.Id != default)
+                    {
+                        _prefixElement = await Js.InvokeAsync<DomRect>(JSInteropConstants.GetBoundingClientRect, _prefixRef);
+                        _prefixElement.width += ItemMargin;
+                    }
+                    if (_suffixRef.Id != default)
+                    {
+                        _suffixElement = await Js.InvokeAsync<DomRect>(JSInteropConstants.GetBoundingClientRect, _suffixRef);
+                        _suffixElement.width += 7;
+                    }
+                    DomEventService.AddEventListener("window", "resize", OnWindowResize, false);
+                    await CalculateResponsiveTags();
+                }
+                DomEventService.AddEventListener(ParentSelect._inputRef, "focusout", OnBlurInternal, true);
+                DomEventService.AddEventListener(ParentSelect._inputRef, "focus", OnFocusInternal, true);
+            }
+            else if (_currentItemCount != ParentSelect.SelectedOptionItems.Count)
+            {
+                _currentItemCount = ParentSelect.SelectedOptionItems.Count;
+                _aggregateTagElement = await Js.InvokeAsync<DomRect>(JSInteropConstants.GetBoundingClientRect, _aggregateTag);
+                await CalculateResponsiveTags(_refocus);
             }
             await base.OnAfterRenderAsync(firstRender);
+        }
+
+        protected async void OnWindowResize(JsonElement element)
+        {
+            await CalculateResponsiveTags();
+        }
+
+        internal async Task CalculateResponsiveTags(bool forceInputFocus = false)
+        {
+            if (!ParentSelect.IsResponsive)
+                return;
+
+            _overflowElement = await Js.InvokeAsync<DomRect>(JSInteropConstants.GetBoundingClientRect, _overflow);
+
+            //distance between items is margin-inline-left=4px
+            decimal accumulatedWidth = _prefixElement.width + _suffixElement.width + (4 + (SearchValue?.Length ?? 0) * 8);
+            int i = 0;
+            bool overflowing = false;
+            bool renderAgain = false;
+            foreach (var item in ParentSelect.SelectedOptionItems)
+            {
+                if (item.Width == 0)
+                {
+                    var itemElement = await Js.InvokeAsync<DomRect>(JSInteropConstants.GetBoundingClientRect, item.SelectedTagRef);
+                    item.Width = itemElement.width;
+                }
+
+                if (!overflowing)
+                {
+                    if (accumulatedWidth + item.Width > _overflowElement.width)
+                    {
+                        //current item will overflow; check if with aggregateTag will overflow
+                        if (accumulatedWidth + _aggregateTagElement.width > _overflowElement.width)
+                        {
+                            if (_calculatedMaxCount != Math.Max(0, i - 1))
+                            {
+                                _calculatedMaxCount = Math.Max(0, i - 1);
+                                renderAgain = true;
+                            }
+                        }
+                        else //aggregateTag will not overflow, so start aggregating from current item
+                        {
+                            if (_calculatedMaxCount != i)
+                            {
+                                _calculatedMaxCount = i;
+                                renderAgain = true;
+                            }
+                        }
+                        overflowing = true;
+                    }
+                    else
+                    {
+                        accumulatedWidth += item.Width;
+                    }
+                    i++;
+                }
+            }
+            if (!overflowing && _calculatedMaxCount != i)
+            {
+                _calculatedMaxCount = i;
+                renderAgain = true;
+            }
+            if (renderAgain)
+                StateHasChanged();
+
+            //force focus on cursor 
+            if (ParentSelect.IsDropdownShown() || forceInputFocus)
+            {
+                var isFocused = await Js.InvokeAsync<bool>(JSInteropConstants.HasFocus, ParentSelect._inputRef);
+                if (!isFocused)
+                {
+                    await Js.FocusAsync(ParentSelect._inputRef);
+                }
+            }
         }
 
         private void SetInputWidth()
@@ -90,6 +222,11 @@ namespace AntDesign.Select.Internal
                 if (!string.IsNullOrWhiteSpace(SearchValue))
                 {
                     _inputWidth = $"{_inputWidth}width: {4 + SearchValue.Length * 8}px;";
+                    if (ParentSelect.IsResponsive && _lastInputWidth != SearchValue.Length)
+                    {
+                        _lastInputWidth = SearchValue.Length;
+                        InvokeAsync(async() => await CalculateResponsiveTags());
+                    }
                 }
                 else
                 {
@@ -129,10 +266,39 @@ namespace AntDesign.Select.Internal
             }
         }
 
+        private string OverflowStyle(int order)
+        {
+            string width = "max-width: 98%;";
+            if (order == 0)
+                width = $"max-width: {GetFirstItemMaxWidth()}%;";
+            if (ParentSelect.HasTagCount || ParentSelect.IsResponsive)
+            {
+                if (_calculatedMaxCount < order + 1)
+                {
+                    return $"opacity: 0.2; order: {order}; height: 0px; overflow-y: hidden; pointer-events: none; {width}";
+                }
+                return $"opacity: 1; order: {order}; {width}";
+            }
+            return "opacity: 1;" + width;
+        }
+
+        private string FormatLabel(string label)
+        {
+            if (ParentSelect.MaxTagTextLength > 0)
+            {
+                return label.Length <= ParentSelect.MaxTagTextLength ? label : label.Substring(0, ParentSelect.MaxTagTextLength) + Ellipse;
+            }
+            return label;
+        }
+
         protected void OnKeyPressEventHandler(KeyboardEventArgs _)
         {
             if (!ParentSelect.IsSearchEnabled)
                 SearchValue = string.Empty;
+            else if (ParentSelect.IsResponsive)
+            {
+
+            }
         }
 
         private Dictionary<string, object> AdditonalAttributes()
@@ -191,9 +357,30 @@ namespace AntDesign.Select.Internal
         /// <summary>
         /// Indicates that a page is being refreshed 
         /// </summary>
-        private bool _isReloading;        
+        private bool _isReloading;
 
         private void Reloading(JsonElement jsonElement) => _isReloading = true;
+
+        internal async Task RemovedItem()
+        {
+            if (ParentSelect.IsResponsive)
+            {
+                _refocus = true;
+                await CalculateResponsiveTags();
+            }
+        }
+
+        private async Task OnClearClickAsync(MouseEventArgs args)
+        {
+            await OnClearClick.InvokeAsync(args);
+        }
+
+        //TODO: Use built in @onfocus once https://github.com/dotnet/aspnetcore/issues/30070 is solved
+        private async void OnFocusInternal(JsonElement e) => await OnFocus.InvokeAsync(new());
+
+        //TODO: Use built in @onblur once https://github.com/dotnet/aspnetcore/issues/30070 is solved
+        private async void OnBlurInternal(JsonElement e) => await OnBlur.InvokeAsync(new());
+
 
         public bool IsDisposed { get; private set; }
 
@@ -205,10 +392,14 @@ namespace AntDesign.Select.Internal
                 {
                     await Task.Delay(100);
                     await Js.InvokeVoidAsync(JSInteropConstants.RemovePreventKeys, ParentSelect._inputRef);
-                    await Js.InvokeVoidAsync(JSInteropConstants.RemovePreventEnterOnOverlayVisible, ParentSelect._inputRef);                    
+                    await Js.InvokeVoidAsync(JSInteropConstants.RemovePreventEnterOnOverlayVisible, ParentSelect._inputRef);
                 });
             }
+            DomEventService.RemoveEventListerner<JsonElement>(ParentSelect._inputRef, "focus", OnFocusInternal);
+            DomEventService.RemoveEventListerner<JsonElement>(ParentSelect._inputRef, "focusout", OnBlurInternal);
             DomEventService.RemoveEventListerner<JsonElement>("window", "beforeunload", Reloading);
+            if (ParentSelect.IsResponsive)
+                DomEventService.RemoveEventListerner<JsonElement>("window", "resize", OnWindowResize);
 
             if (IsDisposed) return;
 
